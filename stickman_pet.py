@@ -147,6 +147,20 @@ def install_global_keyhook(win):
     except Exception:
         return False
 
+
+def uninstall_global_keyhook():
+    """卸载全局键盘钩子并清空引用。低级键盘钩子(WHD_KEYBOARD_LL)若不显式
+    卸载，会随进程残留，拖慢系统响应，必须在退出时清理。"""
+    hook = _hk_hook_ref[0] if _hk_hook_ref else 0
+    if hook:
+        try:
+            _user32.UnhookWindowsHookEx(hook)
+        except Exception:
+            pass
+    _hk_hook_ref.clear()
+    _hk_cb_ref.clear()
+    _hk_win_ref.clear()
+
 # ═════════════════ 路径 ═════════════════
 FRAME_DIR = os.path.join(SCRIPT_DIR, 'stickman_frames')
 
@@ -757,6 +771,7 @@ class StickmanWindow(QWidget):
         self.keys = set()
         self.key_events = queue.Queue()
         self.last_key_time = {}
+        self._closing = False
 
         # 键盘输入：优先用全局低级钩子（不依赖窗口焦点，最可靠）；
         # 仅当钩子安装失败时才回退到 pynput。两者绝不同时启用，否则
@@ -1261,6 +1276,8 @@ class StickmanWindow(QWidget):
     _key_lock = threading.Lock()
 
     def _on_key_press(self, key):
+        if getattr(self, '_closing', False):
+            return
         key = self._map_key(key)
         with self._key_lock:
             if key not in self._key_pressed:
@@ -1269,6 +1286,8 @@ class StickmanWindow(QWidget):
                 self.key_events.put(('press', key))
 
     def _on_key_release(self, key):
+        if getattr(self, '_closing', False):
+            return
         key = self._map_key(key)
         with self._key_lock:
             self._key_pressed.discard(key)
@@ -1308,13 +1327,45 @@ class StickmanWindow(QWidget):
                 self.stickman.try_jump()
 
     def closeEvent(self, ev):
+        self._closing = True
+        # 停掉主循环定时器，停止每帧整屏抓屏+分析
+        try:
+            self.timer.stop()
+        except Exception:
+            pass
+        # 释放截图管理器（其后台抓屏线程若不释放会随进程残留拖慢系统）
+        try:
+            sct = getattr(getattr(self, 'analyzer', None), 'sct', None)
+            if sct is not None:
+                sct.close()
+        except Exception:
+            pass
+        # 停止 pynput 监听
         if getattr(self, 'listener', None):
-            self.listener.stop()
+            try:
+                self.listener.stop()
+            except Exception:
+                pass
+        # 卸载全局键盘钩子，防止退出后仍挂在系统上拖慢响应
+        uninstall_global_keyhook()
+        # 关闭弹出的独立窗口(内嵌姿势编辑器/设置面板)，否则进程不会退出
+        for w in [getattr(self, 'panel', None), getattr(self, '_editor_win', None)]:
+            if w is not None and w is not self:
+                try:
+                    w.close()
+                except Exception:
+                    pass
         if getattr(self, 'tray', None):
             self.tray.hide()
         super().closeEvent(ev)
-        if getattr(self, 'panel', None):
-            self.panel.close()
+        # 强制整个应用退出：不依赖 quitOnLastWindowClosed，确保不残留
+        # 后台进程(后台每帧整屏抓屏会持续占用 CPU，拖慢整个系统)
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+        except Exception:
+            pass
 
     def toggle_panel(self):
         if getattr(self, 'panel', None) and self.panel.isVisible():

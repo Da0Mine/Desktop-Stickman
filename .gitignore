@@ -24,3 +24,6 @@ sheet/
 
 # ===== 打包产物：安装包通过 GitHub Releases 发布，不入库 =====
 dist/
+
+# ===== WorkBuddy 本地数据/记忆（私人工作区，勿上传）=====
+.workbuddy/
