@@ -1,0 +1,26 @@
+# ===== Python =====
+__pycache__/
+*.pyc
+*.pyo
+
+# ===== 运行时生成的日志与用户数据（首次运行自动生成，不应入库）=====
+*.log
+crash_log.txt
+run_log*.txt
+debug_log.txt
+cfg_saved.txt
+output/
+
+# ===== 开发过程中的临时补丁脚本与测试 =====
+patch_*.py
+test_keys.py
+
+# ===== 旧帧素材与参考图片（非运行时必需，且体量大）=====
+stickman_frames/
+sheet/
+
+# ===== 私人待办（勿上传）=====
+待实现功能，AI勿看.txt
+
+# ===== 打包产物：安装包通过 GitHub Releases 发布，不入库 =====
+dist/
